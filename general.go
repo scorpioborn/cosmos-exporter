@@ -15,10 +15,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	tmrpc "github.com/tendermint/tendermint/rpc/client/http"
 	"google.golang.org/grpc"
 )
 
-func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.ClientConn) {
+func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.ClientConn, tmClient *tmrpc.HTTP) {
 	requestStart := time.Now()
 
 	sublogger := log.With().
@@ -92,6 +93,14 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 		},
 	)
 
+	generalAvgBlockTimeGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name:        "cosmos_avg_block_time",
+			Help:        "Average block time",
+			ConstLabels: ConstLabels,
+		},
+	)
+
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(generalBondedTokensGauge)
 	registry.MustRegister(generalNotBondedTokensGauge)
@@ -101,6 +110,7 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 	registry.MustRegister(generalAnnualProvisions)
 	registry.MustRegister(generalUpgradePlannedGauge)
 	registry.MustRegister(generalUpgradePlanHeightGauge)
+	registry.MustRegister(generalAvgBlockTimeGauge)
 
 	var wg sync.WaitGroup
 
@@ -280,6 +290,30 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 		}
 		generalUpgradePlannedGauge.Set(float64(upgradePlanned))
 		generalUpgradePlanHeightGauge.Set(float64(response.Plan.Height))
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sublogger.Debug().Msg("Started average block time")
+		queryStart := time.Now()
+
+		response, err := tmClient.Status(context.Background())
+		if err != nil {
+			sublogger.Error().Err(err).Msg("Could not get average block time")
+			return
+		}
+
+		sublogger.Debug().
+			Float64("request-time", time.Since(queryStart).Seconds()).
+			Msg("Finished querying average block time")
+
+		timeDiff := response.SyncInfo.LatestBlockTime.Sub(refBlockTime).Seconds()
+		blockDiff := response.SyncInfo.LatestBlockHeight - refBlockHeight
+
+		avgBlockTime := timeDiff / float64(blockDiff)
+
+		generalAvgBlockTimeGauge.Set(avgBlockTime)
 	}()
 
 	wg.Wait()

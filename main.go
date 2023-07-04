@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -40,6 +41,9 @@ var (
 	ConstLabels      map[string]string
 	DenomCoefficient float64
 	DenomExponent    uint64
+
+	refBlockHeight int64
+	refBlockTime   time.Time
 )
 
 var log = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
@@ -157,7 +161,8 @@ func Execute(cmd *cobra.Command, args []string) {
 		log.Fatal().Err(err).Msg("Could not connect to gRPC node")
 	}
 
-	setChainID()
+	tmClient := getTmClient()
+	setChainID(tmClient)
 	setDenom(grpcConn)
 
 	http.HandleFunc("/metrics/wallet", func(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +182,7 @@ func Execute(cmd *cobra.Command, args []string) {
 	})
 
 	http.HandleFunc("/metrics/general", func(w http.ResponseWriter, r *http.Request) {
-		GeneralHandler(w, r, grpcConn)
+		GeneralHandler(w, r, grpcConn, tmClient)
 	})
 
 	log.Info().Str("address", ListenAddress).Msg("Listening")
@@ -187,12 +192,15 @@ func Execute(cmd *cobra.Command, args []string) {
 	}
 }
 
-func setChainID() {
+func getTmClient() *tmrpc.HTTP {
 	client, err := tmrpc.New(TendermintRPC, "/websocket")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not create Tendermint client")
 	}
+	return client
+}
 
+func setChainID(client *tmrpc.HTTP) {
 	status, err := client.Status(context.Background())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not query Tendermint status")
@@ -203,6 +211,9 @@ func setChainID() {
 	ConstLabels = map[string]string{
 		"chain_id": ChainID,
 	}
+
+	refBlockHeight = status.SyncInfo.LatestBlockHeight
+	refBlockTime = status.SyncInfo.LatestBlockTime
 }
 
 func setDenom(grpcConn *grpc.ClientConn) {
