@@ -11,6 +11,7 @@ import (
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -75,6 +76,22 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 		[]string{"denom"},
 	)
 
+	generalUpgradePlannedGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name:        "cosmos_upgrade_planned",
+			Help:        "Upgrade planned",
+			ConstLabels: ConstLabels,
+		},
+	)
+
+	generalUpgradePlanHeightGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name:        "cosmos_upgrade_plan_height",
+			Help:        "Upgrade plan height",
+			ConstLabels: ConstLabels,
+		},
+	)
+
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(generalBondedTokensGauge)
 	registry.MustRegister(generalNotBondedTokensGauge)
@@ -82,6 +99,8 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 	registry.MustRegister(generalSupplyTotalGauge)
 	registry.MustRegister(generalInflationGauge)
 	registry.MustRegister(generalAnnualProvisions)
+	registry.MustRegister(generalUpgradePlannedGauge)
+	registry.MustRegister(generalUpgradePlanHeightGauge)
 
 	var wg sync.WaitGroup
 
@@ -233,6 +252,34 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 				"denom": Denom,
 			}).Set(value / DenomCoefficient)
 		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sublogger.Debug().Msg("Started querying upgrade plan")
+		queryStart := time.Now()
+
+		upgradeClient := upgradetypes.NewQueryClient(grpcConn)
+		response, err := upgradeClient.CurrentPlan(
+			context.Background(),
+			&upgradetypes.QueryCurrentPlanRequest{},
+		)
+		if err != nil {
+			sublogger.Error().Err(err).Msg("Could not get upgrade plan")
+			return
+		}
+
+		sublogger.Debug().
+			Float64("request-time", time.Since(queryStart).Seconds()).
+			Msg("Finished querying upgrade plan")
+
+		upgradePlanned := 0
+		if response.Plan == nil {
+			upgradePlanned = 1
+		}
+		generalUpgradePlannedGauge.Set(float64(upgradePlanned))
+		generalUpgradePlanHeightGauge.Set(float64(response.Plan.Height))
 	}()
 
 	wg.Wait()
