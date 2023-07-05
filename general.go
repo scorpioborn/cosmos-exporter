@@ -285,7 +285,7 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 			Msg("Finished querying upgrade plan")
 
 		upgradePlanned := 0
-		if response.Plan == nil {
+		if response.Plan != nil {
 			upgradePlanned = 1
 		}
 		generalUpgradePlannedGauge.Set(float64(upgradePlanned))
