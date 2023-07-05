@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/client/grpc/tmservice"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/rs/zerolog"
@@ -161,9 +162,11 @@ func Execute(cmd *cobra.Command, args []string) {
 		log.Fatal().Err(err).Msg("Could not connect to gRPC node")
 	}
 
+	ConstLabels = make(map[string]string)
 	tmClient := getTmClient()
 	setChainID(tmClient)
 	setDenom(grpcConn)
+	setNodeInfo(grpcConn)
 
 	http.HandleFunc("/metrics/wallet", func(w http.ResponseWriter, r *http.Request) {
 		WalletHandler(w, r, grpcConn)
@@ -208,9 +211,9 @@ func setChainID(client *tmrpc.HTTP) {
 
 	log.Info().Str("network", status.NodeInfo.Network).Msg("Got network status from Tendermint")
 	ChainID = status.NodeInfo.Network
-	ConstLabels = map[string]string{
-		"chain_id": ChainID,
-	}
+
+	ConstLabels["chain_id"] = ChainID
+	ConstLabels["tendermint_version"] = status.NodeInfo.Version
 
 	refBlockHeight = status.SyncInfo.LatestBlockHeight
 	refBlockTime = status.SyncInfo.LatestBlockTime
@@ -257,6 +260,20 @@ func setDenom(grpcConn *grpc.ClientConn) {
 	}
 
 	log.Fatal().Msg("Could not find the denom info")
+}
+
+func setNodeInfo(grpcConn *grpc.ClientConn) {
+	tmClient := tmservice.NewServiceClient(grpcConn)
+	nodeInfo, err := tmClient.GetNodeInfo(
+		context.Background(),
+		&tmservice.GetNodeInfoRequest{},
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error querying node info")
+	}
+
+	ConstLabels["app_version"] = nodeInfo.ApplicationVersion.Version
+	ConstLabels["sdk_version"] = nodeInfo.ApplicationVersion.CosmosSdkVersion
 }
 
 func checkAndHandleDenomInfoProvidedByUser() bool {
