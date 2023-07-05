@@ -77,12 +77,13 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 		[]string{"denom"},
 	)
 
-	generalUpgradePlannedGauge := prometheus.NewGauge(
+	generalUpgradePlannedGauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name:        "cosmos_upgrade_planned",
 			Help:        "Upgrade planned",
 			ConstLabels: ConstLabels,
 		},
+		[]string{"name", "info"},
 	)
 
 	generalUpgradePlanHeightGauge := prometheus.NewGauge(
@@ -288,7 +289,9 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 		if response.Plan != nil {
 			upgradePlanned = 1
 		}
-		generalUpgradePlannedGauge.Set(float64(upgradePlanned))
+		generalUpgradePlannedGauge.With(
+			prometheus.Labels{"name": response.Plan.Name, "info": response.Plan.Info},
+		).Set(float64(upgradePlanned))
 		generalUpgradePlanHeightGauge.Set(float64(response.Plan.Height))
 	}()
 
