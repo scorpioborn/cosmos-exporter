@@ -285,14 +285,14 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 			Float64("request-time", time.Since(queryStart).Seconds()).
 			Msg("Finished querying upgrade plan")
 
-		upgradePlanned := 0
 		if response.Plan != nil {
-			upgradePlanned = 1
+			generalUpgradePlannedGauge.With(
+				prometheus.Labels{"name": response.Plan.Name, "info": response.Plan.Info},
+			).Set(float64(1))
+			generalUpgradePlanHeightGauge.Set(float64(response.Plan.Height))
+		} else {
+			sublogger.Debug().Msg("No Upgrade planned")
 		}
-		generalUpgradePlannedGauge.With(
-			prometheus.Labels{"name": response.Plan.Name, "info": response.Plan.Info},
-		).Set(float64(upgradePlanned))
-		generalUpgradePlanHeightGauge.Set(float64(response.Plan.Height))
 	}()
 
 	wg.Add(1)
