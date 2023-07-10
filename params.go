@@ -2,18 +2,19 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	minttypes "github.com/sge-network/sge/x/mint/types"
 	"google.golang.org/grpc"
 )
 
@@ -48,36 +49,21 @@ func ParamsHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Client
 		},
 	)
 
-	paramsGoalBondedGauge := prometheus.NewGauge(
+	paramsExcludeAmountGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name:        "cosmos_params_goal_bonded",
-			Help:        "Goal bonded",
+			Name:        "sge_params_exclude_amount",
+			Help:        "Axclude amount",
 			ConstLabels: ConstLabels,
 		},
 	)
 
-	paramsInflationMinGauge := prometheus.NewGauge(
+	paramsPhasesGauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "cosmos_params_inflation_min",
-			Help:        "Min inflation",
+			Name:        "sge_params_phases",
+			Help:        "Phases",
 			ConstLabels: ConstLabels,
 		},
-	)
-
-	paramsInflationMaxGauge := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name:        "cosmos_params_inflation_max",
-			Help:        "Max inflation",
-			ConstLabels: ConstLabels,
-		},
-	)
-
-	paramsInflationRateChangeGauge := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name:        "cosmos_params_inflation_rate_change",
-			Help:        "Inflation rate change",
-			ConstLabels: ConstLabels,
-		},
+		[]string{"phases"},
 	)
 
 	paramsDowntailJailDurationGauge := prometheus.NewGauge(
@@ -147,9 +133,7 @@ func ParamsHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Client
 	registry.MustRegister(paramsMaxValidatorsGauge)
 	registry.MustRegister(paramsUnbondingTimeGauge)
 	registry.MustRegister(paramsBlocksPerYearGauge)
-	registry.MustRegister(paramsInflationMinGauge)
-	registry.MustRegister(paramsInflationMaxGauge)
-	registry.MustRegister(paramsInflationRateChangeGauge)
+	registry.MustRegister(paramsPhasesGauge)
 	registry.MustRegister(paramsDowntailJailDurationGauge)
 	registry.MustRegister(paramsMinSignedPerWindowGauge)
 	registry.MustRegister(paramsSignedBlocksWindowGauge)
@@ -211,37 +195,23 @@ func ParamsHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Client
 		paramsBlocksPerYearGauge.Set(float64(paramsResponse.Params.BlocksPerYear))
 
 		// because cosmos's dec doesn't have .toFloat64() method or whatever and returns everything as int
-		if value, err := strconv.ParseFloat(paramsResponse.Params.GoalBonded.String(), 64); err != nil {
+		if value, err := strconv.ParseFloat(paramsResponse.Params.ExcludeAmount.String(), 64); err != nil {
 			sublogger.Error().
 				Err(err).
-				Msg("Could not parse goal bonded")
+				Msg("Could not parse exlcude amount")
 		} else {
-			paramsGoalBondedGauge.Set(value)
+			paramsExcludeAmountGauge.Set(value)
 		}
 
-		if value, err := strconv.ParseFloat(paramsResponse.Params.InflationMin.String(), 64); err != nil {
+		phasesJSON, err := json.Marshal(paramsResponse.Params.Phases)
+		if err != nil {
 			sublogger.Error().
 				Err(err).
-				Msg("Could not parse inflation min")
-		} else {
-			paramsInflationMinGauge.Set(value)
+				Msg("Could not parse phases")
 		}
 
-		if value, err := strconv.ParseFloat(paramsResponse.Params.InflationMax.String(), 64); err != nil {
-			sublogger.Error().
-				Err(err).
-				Msg("Could not parse inflation min")
-		} else {
-			paramsInflationMaxGauge.Set(value)
-		}
-
-		if value, err := strconv.ParseFloat(paramsResponse.Params.InflationRateChange.String(), 64); err != nil {
-			sublogger.Error().
-				Err(err).
-				Msg("Could not parse inflation rate change")
-		} else {
-			paramsInflationRateChangeGauge.Set(value)
-		}
+		paramsPhasesGauge.
+			With(prometheus.Labels{"phases": string(phasesJSON)})
 	}()
 	wg.Add(1)
 

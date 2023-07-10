@@ -11,11 +11,12 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rs/zerolog v1.27.0
+	github.com/sge-network/sge v0.0.9
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.14.0
 	github.com/tendermint/tendermint v0.34.27
-	google.golang.org/grpc v1.52.3
+	google.golang.org/grpc v1.55.0
 )
 
 // use cometbft

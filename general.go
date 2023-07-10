@@ -9,12 +9,12 @@ import (
 
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	minttypes "github.com/sge-network/sge/x/mint/types"
 	tmrpc "github.com/tendermint/tendermint/rpc/client/http"
 	"google.golang.org/grpc"
 )
@@ -62,16 +62,16 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 
 	generalInflationGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name:        "cosmos_general_inflation",
+			Name:        "sge_general_inflation",
 			Help:        "Total supply",
 			ConstLabels: ConstLabels,
 		},
 	)
 
-	generalAnnualProvisions := prometheus.NewGaugeVec(
+	generalPhaseProvisions := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "cosmos_general_annual_provisions",
-			Help:        "Annual provisions",
+			Name:        "sge_general_phase_provisions",
+			Help:        "Phase provisions",
 			ConstLabels: ConstLabels,
 		},
 		[]string{"denom"},
@@ -108,7 +108,7 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 	registry.MustRegister(generalCommunityPoolGauge)
 	registry.MustRegister(generalSupplyTotalGauge)
 	registry.MustRegister(generalInflationGauge)
-	registry.MustRegister(generalAnnualProvisions)
+	registry.MustRegister(generalPhaseProvisions)
 	registry.MustRegister(generalUpgradePlannedGauge)
 	registry.MustRegister(generalUpgradePlanHeightGauge)
 	registry.MustRegister(generalAvgBlockTimeGauge)
@@ -237,29 +237,29 @@ func GeneralHandler(w http.ResponseWriter, r *http.Request, grpcConn *grpc.Clien
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sublogger.Debug().Msg("Started querying annual provisions")
+		sublogger.Debug().Msg("Started querying phase provisions")
 		queryStart := time.Now()
 
 		mintClient := minttypes.NewQueryClient(grpcConn)
-		response, err := mintClient.AnnualProvisions(
+		response, err := mintClient.PhaseProvisions(
 			context.Background(),
-			&minttypes.QueryAnnualProvisionsRequest{},
+			&minttypes.QueryPhaseProvisionsRequest{},
 		)
 		if err != nil {
-			sublogger.Error().Err(err).Msg("Could not get annual provisions")
+			sublogger.Error().Err(err).Msg("Could not get phase provisions")
 			return
 		}
 
 		sublogger.Debug().
 			Float64("request-time", time.Since(queryStart).Seconds()).
-			Msg("Finished querying annual provisions")
+			Msg("Finished querying phase provisions")
 
-		if value, err := strconv.ParseFloat(response.AnnualProvisions.String(), 64); err != nil {
+		if value, err := strconv.ParseFloat(response.PhaseProvisions.String(), 64); err != nil {
 			sublogger.Error().
 				Err(err).
-				Msg("Could not get annual provisions")
+				Msg("Could not get phase provisions")
 		} else {
-			generalAnnualProvisions.With(prometheus.Labels{
+			generalPhaseProvisions.With(prometheus.Labels{
 				"denom": Denom,
 			}).Set(value / DenomCoefficient)
 		}
